@@ -1,0 +1,49 @@
+# docker-compose.yml
+
+version: "3.8"
+services:
+  zookeeper:
+    image: zookeeper
+    ports:
+      - "2181:2181"
+    restart: always
+    container_name: circles_zookeeper
+
+  kafka:
+    image: confluentinc/cp-kafka
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    container_name: circles_kafka
+    restart: always
+    environment:
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+
+  cassandra:
+    image: cassandra:latest
+    container_name: circles_cassandra
+    ports:
+      - "9042:9042" # Expose Cassandra's native transport protocol port
+    environment:
+      CASSANDRA_CLUSTER_NAME: "CIR_CLSTR_1" # Name of the Cassandra cluster
+      CASSANDRA_SEEDS: "cassandra" # Seed nodes
+      CASSANDRA_START_RPC: "true" # Enable RPC (optional)
+      CASSANDRA_ENDPOINT_SNITCH: "SimpleSnitch" # Snitch type (SimpleSnitch is good for single-node setups)
+    volumes:
+      - ./data:/var/lib/cassandra # Persist data to the host system
+    networks:
+      - backend
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    container_name: circles_redis
+    restart: always
+
+networks:
+  backend:
+    driver: bridge
