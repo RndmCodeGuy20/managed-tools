@@ -24,16 +24,33 @@ services:
 
   cassandra:
     image: cassandra:latest
-    container_name: circles_cassandra
+    container_name: rcg_cassandra
     ports:
-      - "9042:9042" # Expose Cassandra's native transport protocol port
+      - "9042:9042" # CQL native transport port
+      - "7000:7000" # Inter-node communication
+      - "7001:7001" # TLS inter-node communication
+      - "7199:7199" # JMX
     environment:
-      CASSANDRA_CLUSTER_NAME: "CIR_CLSTR_1" # Name of the Cassandra cluster
-      CASSANDRA_SEEDS: "cassandra" # Seed nodes
-      CASSANDRA_START_RPC: "true" # Enable RPC (optional)
-      CASSANDRA_ENDPOINT_SNITCH: "SimpleSnitch" # Snitch type (SimpleSnitch is good for single-node setups)
+      - CASSANDRA_START_RPC=true
+      - CASSANDRA_CLUSTER_NAME=RCG_CLSTR
+      - CASSANDRA_AUTHENTICATOR=PasswordAuthenticator
+      - CASSANDRA_AUTHORIZER=CassandraAuthorizer
+      - MAX_HEAP_SIZE=512M
+      - HEAP_NEWSIZE=100M
+      - CASSANDRA_ADMIN_USER=rndmcodeguy
+      - CASSANDRA_ADMIN_PASSWORD=rndmcodeguy@2002
+      - CASSANDRA_APP_USER=rcg
+      - CASSANDRA_APP_PASSWORD=rcg@2002
+      - CASSANDRA_KEYSPACE=rcg_keyspace
+    restart: always
+    healthcheck:
+      test: [ "CMD", "cqlsh", "-u", "cassandra", "-p", "cassandra", "-e", "describe keyspaces" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
     volumes:
-      - ./data:/var/lib/cassandra # Persist data to the host system
+      - cassandra_data:/var/lib/cassandra
+      - ./scripts/cassandra.sh:/docker-entrypoint-initdb.d
     networks:
       - backend
 
@@ -41,8 +58,42 @@ services:
     image: redis:latest
     ports:
       - "6379:6379"
-    container_name: circles_redis
+    container_name: rcg_redis
+    command: redis-server /usr/local/etc/redis/redis.conf
+    environment:
+      - REDIS_PASSWORD=rcg@2002
+      - REDIS_USER=rcg
+      - REDIS_ADMIN_USER=rndmcodeguy
+      - REDIS_ADMIN_PASSWORD=rndmcodeguy@2002
+      - REDIS_APP_USER=rcg
+      - REDIS_APP_PASSWORD=rcg@2002
     restart: always
+    volumes:
+      - redis_data:/data
+      - ./scripts/redis.conf:/usr/local/etc/redis/redis.conf
+      - ./scripts/redis.sh:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "$$REDIS_PASSWORD", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+volumes:
+  cassandra_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./data/cassandra
+      o: bind
+
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./data/redis
+      o: bind
 
 networks:
   backend:
